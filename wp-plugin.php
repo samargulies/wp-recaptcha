@@ -39,7 +39,7 @@ if (!class_exists('WPPlugin')) {
         // environment checking
         static function determine_environment() {
             global $wpmu_version;
-            
+
             if (function_exists('is_multisite'))
                 if (is_multisite())
                     return Environment::WordPressMS;
@@ -91,23 +91,29 @@ if (!class_exists('WPPlugin')) {
         
         // option retrieval
         static function retrieve_options($options_name) {
+/* huyz 2011-06-15 I don't think that's what *site_option is for
             if (WPPlugin::determine_environment() == Environment::WordPressMU || WPPlugin::determine_environment() == Environment::WordPressMS)
                 return get_site_option($options_name);
             else
+*/
                 return get_option($options_name);
         }
         
         static function remove_options($options_name) {
+/* huyz 2011-06-15 I don't think that's what *site_option is for
             if (WPPlugin::determine_environment() == Environment::WordPressMU || WPPlugin::determine_environment() == Environment::WordPressMS)
                 return delete_site_option($options_name);
             else
+*/
                 return delete_option($options_name);
         }
         
         static function add_options($options_name, $options) {
+/* huyz 2011-06-15 I don't think that's what *site_option is for
             if (WPPlugin::determine_environment() == Environment::WordPressMU || WPPlugin::determine_environment() == Environment::WordPressMS)
                 return add_site_option($options_name, $options);
             else
+*/
                 return add_option($options_name, $options);
         }
         
