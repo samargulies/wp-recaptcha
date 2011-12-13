@@ -19,13 +19,15 @@ Author URI: http://www.blaenkdenum.com
 //    1 - WordPress MU Forced Activated
 //    2 - WordPress MU Optional Activation
 
+if ( ! function_exists( 'is_plugin_active_for_network' ) )
+   require_once( ABSPATH . '/wp-admin/includes/plugin.php' );
+   
 $wpmu = 0;
 
-if(is_dir(WP_CONTENT_DIR . '/mu-plugins')){
-	if (is_file(WP_CONTENT_DIR . '/mu-plugins/wp-recaptcha.php')) // forced activated
-	   $wpmu = 1;
-	else if (is_file(WP_CONTENT_DIR . '/plugins/wp-recaptcha.php')) // optionally activated
-	   $wpmu = 2;
+if( is_plugin_active_for_network( plugin_basename(__FILE__) ) ){
+	$wpmu = 1;
+} else if( is_multisite() ) { // optionally activated
+	$wpmu = 2;
 }
 
 if ($wpmu == 1)
@@ -35,10 +37,8 @@ else
 
 // END WORDPRESS MU DETECTION
    
-if ($wpmu == 1)
-   require_once(WP_CONTENT_DIR . '/mu-plugins/wp-recaptcha/recaptchalib.php');
-else
-   require_once(WP_CONTENT_DIR . '/plugins/recaptchalib.php');
+
+require_once( plugin_dir_path(__FILE__) . 'recaptchalib.php' );
 
 // doesn't need to be secret, just shouldn't be used by any other code.
 define ("RECAPTCHA_WP_HASH_SALT", "b7e0638d85f5d7f3694f68e944136d62");
@@ -48,16 +48,10 @@ define ("RECAPTCHA_WP_HASH_SALT", "b7e0638d85f5d7f3694f68e944136d62");
    ============================================================================= */
 
 function re_css() {
-   global $recaptcha_opt, $wpmu;
-   
-   if (!defined('WP_CONTENT_URL'))
-      define('WP_CONTENT_URL', get_option('siteurl') . '/wp-content');
-   
-   $path = WP_CONTENT_URL . '/plugins/wp-recaptcha/recaptcha.css';
-   
-   if ($wpmu == 1)
-		$path = WP_CONTENT_URL . '/mu-plugins/wp-recaptcha/recaptcha.css';
-   
+   global $recaptcha_opt;
+    
+   $path = plugins_url( 'recaptcha.css', __FILE__ );
+      
    echo '<link rel="stylesheet" type="text/css" href="' . $path . '" />';
 }
 
@@ -65,17 +59,14 @@ function registration_css() {
    global $recaptcha_opt;
    
    if ($recaptcha_opt['re_registration']) {
-		$width = 0;
+		$width = 358;
 		
-		if ($recaptcha_opt['re_theme_reg'] == 'red' ||
-          $recaptcha_opt['re_theme_reg'] == 'white' ||
-          $recaptcha_opt['re_theme_reg'] == 'blackglass')
-          $width = 358;
-		else if ($recaptcha_opt['re_theme_reg'] == 'clean')
-          $width = 485;
+		if ($recaptcha_opt['re_theme_reg'] == 'clean')
+			$width = 485;
 		
 		echo <<<REGISTRATION
 		<style type="text/css">
+		
 		#login {
 				width: {$width}px !important;
 		}
@@ -94,14 +85,11 @@ function registration_css() {
 REGISTRATION;
    }
 }
+add_action('login_head', 'registration_css'); // include the login div styling, embedded
 
 add_action('wp_head', 're_css'); // include the stylesheet in typical pages to style hidden emails
 add_action('admin_head', 're_css'); // include stylesheet to style options page
-add_action('login_head', 'registration_css'); // include the login div styling, embedded
 
-/* =============================================================================
-   End CSS
-   ============================================================================= */
 
 // If the plugin is deactivated, delete the preferences
 function delete_preferences() {
@@ -154,29 +142,11 @@ COMMENT_FORM;
 }
 
 // Hook the display_recaptcha function into WordPress
-if ($wpmu != 1)
+if ( is_multisite() )
    add_action('register_form', 'display_recaptcha');
 else
    add_action('signup_extra_fields', 'display_recaptcha');
 
-// Check the captcha
-function check_recaptcha() {
-	global $recaptcha_opt, $errors;
-	
-   if (empty($_POST['recaptcha_response_field']))
-		$errors['blank_captcha'] = $recaptcha_opt['error_blank'];
-   
-   else {
-   	$response = recaptcha_check_answer($recaptcha_opt['privkey'],
-		$_SERVER['REMOTE_ADDR'],
-		$_POST['recaptcha_challenge_field'],
-		$_POST['recaptcha_response_field']);
-
-   	if (!$response->is_valid)
-   		if ($response->error == 'incorrect-captcha-sol')
-   				$errors['captcha_wrong'] = $recaptcha_opt['error_incorrect'];
-   }
-}
 
 // Check the captcha
 function check_recaptcha_new($errors) {
@@ -238,50 +208,57 @@ if ($recaptcha_opt['re_registration']) {
 		add_filter('wpmu_validate_user_signup', 'check_recaptcha_wpmu');
    
    else if ($wpmu == 0) {
-		// Hook the check_recaptcha function into WordPress
-		if (version_compare(get_bloginfo('version'), '2.5' ) >= 0)
-         add_filter('registration_errors', 'check_recaptcha_new');
-		else
          add_filter('registration_errors', 'check_recaptcha');
    }
 }
-/* =============================================================================
-   End reCAPTCHA on Registration Form
-   ============================================================================= */
 
 /* =============================================================================
    reCAPTCHA Plugin Default Options
    ============================================================================= */
 
-$option_defaults = array (
-   'pubkey'	=> '', // the public key for reCAPTCHA
-   'privkey'	=> '', // the private key for reCAPTCHA
-   're_bypass' => '', // whether to sometimes skip reCAPTCHAs for registered users
-   're_bypasslevel' => '', // who doesn't have to do the reCAPTCHA (should be a valid WordPress capability slug)
-   're_theme' => 'red', // the default theme for reCAPTCHA on the comment post
-   're_theme_reg' => 'red', // the default theme for reCAPTCHA on the registration form
-   're_lang' => 'en', // the default language for reCAPTCHA
-   're_tabindex' => '5', // the default tabindex for reCAPTCHA
-   're_comments' => '1', // whether or not to show reCAPTCHA on the comment post
-   're_registration' => '1', // whether or not to show reCAPTCHA on the registratoin page
-   're_xhtml' => '0', // whether or not to be XHTML 1.0 Strict compliant
-   'error_blank' => '<strong>ERROR</strong>: Please fill in the reCAPTCHA form.', // the message to display when the user enters no CAPTCHA response
-   'error_incorrect' => '<strong>ERROR</strong>: That reCAPTCHA response was incorrect.', // the message to display when the user enters the incorrect CAPTCHA response
-);
+function recaptcha_default_options() {
 
-// install the defaults
-if ($wpmu != 1)
-   add_option('recaptcha', $option_defaults, 'reCAPTCHA Default Options', 'yes');
+	$option = array (
+		'pubkey'			=> '', // the public key for reCAPTCHA
+		'privkey'			=> '', // the private key for reCAPTCHA
+		're_bypass' 		=> '', // whether to sometimes skip reCAPTCHAs for registered users
+		're_bypasslevel' 	=> '', // who doesn't have to do the reCAPTCHA (should be a valid WordPress capability slug)
+		're_theme' => 'red', // the default theme for reCAPTCHA on the comment post
+		're_theme_reg' 		=> 'red', // the default theme for reCAPTCHA on the registration form
+		're_lang' => 'en', // the default language for reCAPTCHA
+		're_tabindex' 		=> '5', // the default tabindex for reCAPTCHA
+		're_comments' 		=> '1', // whether or not to show reCAPTCHA on the comment post
+		're_registration' 	=> '1', // whether or not to show reCAPTCHA on the registratoin page
+		're_xhtml' => '0', // whether or not to be XHTML 1.0 Strict compliant
+		'error_blank' 		=> '<strong>ERROR</strong>: Please fill in the reCAPTCHA form.', // the message to display when the user enters no CAPTCHA response
+		'error_incorrect' 	=> '<strong>ERROR</strong>: That reCAPTCHA response was incorrect.', // the message to display when the user enters the incorrect CAPTCHA response
+	);
+	return $options;
+}
 
-/* =============================================================================
-   End reCAPTCHA Plugin Default Options
-   ============================================================================= */
+function recaptcha_options_init() {
+
+	if ($wpmu != 1) { return; }
+
+	 // set options equal to defaults
+	 $options = get_option( 'recaptcha' );
+	 if ( false === $options ) {
+		$options = recaptcha_default_options();
+	 }
+	 // install the defaults
+	
+	update_option( 'recaptcha', $options );
+}
+
+add_action('after_setup_theme','recaptcha_options_init', 9 );
+
+
 
 /* =============================================================================
    reCAPTCHA - The reCAPTCHA comment spam protection section
    ============================================================================= */
-function recaptcha_wp_hash_comment($id)
-{
+   
+function recaptcha_wp_hash_comment($id) {
 	global $recaptcha_opt;
    
 	if (function_exists('wp_hash'))
@@ -485,23 +462,9 @@ function recaptcha_wp_add_options_to_admin() {
 function recaptcha_wp_options_subpanel() {
    global $wpmu;
 	// Default values for the options array
-	$optionarray_def = array(
-		'pubkey'	=> '',
-		'privkey' 	=> '',
-		're_bypasslevel' => '3',
-		're_theme_reg' => 'red',
-		're_lang' => 'en',
-		're_tabindex' => '5',
-		're_comments' => '1',
-		're_registration' => '1',
-		're_xhtml' => '0',
-      'error_blank' => '<strong>ERROR</strong>: Please fill in the reCAPTCHA form.',
-      'error_incorrect' => '<strong>ERROR</strong>: That reCAPTCHA response was incorrect.',
-		);
+	$optionarray_def = get_option('recaptcha');
 
-	if ($wpmu != 1)
-		add_option('recaptcha', $optionarray_def, 'reCAPTCHA Options');
-
+	
 	/* Check form submission and update options if no error occurred */
 	if (isset($_POST['submit'])) {
 		$optionarray_update = array (
@@ -547,12 +510,15 @@ function recaptcha_wp_options_subpanel() {
 function recaptcha_dropdown_capabilities($select_name, $checked_value="") {
 	// define choices: Display text => permission slug
 	$capability_choices = array (
-	 	'All registered users' => 'read',
-	 	'Edit posts' => 'edit_posts',
-	 	'Publish Posts' => 'publish_posts',
-	 	'Moderate Comments' => 'moderate_comments',
-	 	'Administer site' => 'level_10'
+	 	'Subscribers' => 'read',
+	 	'Contributors' => 'edit_posts',
+	 	'Authors' => 'publish_posts',	 	
+	 	'Comment Moderators' => 'moderate_comments',
+	 	'Administrators' => 'manage_options'
 	 	);
+	 if( is_multisite() ) {
+	 	$capability_choices['Super Admins'] = 'manage_network';
+	 }
 	// print the <select> and loop through <options>
 	echo '<select name="' . $select_name . '" id="' . $select_name . '">' . "\n";
 	foreach ($capability_choices as $text => $capability) :
@@ -561,7 +527,7 @@ function recaptcha_dropdown_capabilities($select_name, $checked_value="") {
 		$checked = NULL;
 	endforeach;
 	echo "</select> \n";
- } // end recaptcha_dropdown_capabilities()
+ }
    
 ?>
 
@@ -572,11 +538,10 @@ function recaptcha_dropdown_capabilities($select_name, $checked_value="") {
 	<p>reCAPTCHA is a free, accessible CAPTCHA service that helps to digitize books while blocking spam on your blog.</p>
 	
 	<p>reCAPTCHA asks commenters to retype two words scanned from a book to prove that they are a human. This verifies that they are not a spambot while also correcting the automatic scans of old books. So you get less spam, and the world gets accurately digitized books. Everybody wins! For details, visit the <a href="http://recaptcha.net/">reCAPTCHA website</a>.</p>
-   <p><strong>NOTE</strong>: If you are using some form of Cache plugin you will probably need to flush/clear your cache for changes to take effect.</p>
    
 	<form name="form1" method="post" action="<?php echo $_SERVER['REDIRECT_SCRIPT_URI'] . '?page=' . plugin_basename(__FILE__); ?>&updated=true">
 		<div class="submit">
-			<input type="submit" name="submit" value="<?php _e('Update Options') ?> &raquo;" />
+			<input type="submit" name="submit" value="<?php _e('Update Options') ?>" />
 		</div>
 	
 	<!-- ****************** Operands ****************** -->
@@ -601,12 +566,12 @@ function recaptcha_dropdown_capabilities($select_name, $checked_value="") {
 		<th scope="row">Comment Options</th>
 		<td>
 			<!-- Show reCAPTCHA on the comment post -->
-			<big><input type="checkbox" name="re_comments" id="re_comments" value="1" <?php if($optionarray_def['re_comments'] == true){echo 'checked="checked"';} ?> /> <label for="re_comments">Enable reCAPTCHA for comments.</label></big>
+			<input type="checkbox" name="re_comments" id="re_comments" value="1" <?php if($optionarray_def['re_comments'] == true){echo 'checked="checked"';} ?> /> <label for="re_comments">Enable reCAPTCHA for comments.</label>
 			<br />
 			<!-- Don't show reCAPTCHA to admins -->
 			<div class="theme-select">
 			<input type="checkbox" id="re_bypass" name="re_bypass" <?php if($optionarray_def['re_bypass'] == true){echo 'checked="checked"';} ?>/>
-			<label name="re_bypass" for="re_bypass">Hide reCAPTCHA for <strong>registered</strong> users who can:</label>
+			<label name="re_bypass" for="re_bypass">Hide reCAPTCHA for <strong>registered</strong> users:</label>
 			<?php recaptcha_dropdown_capabilities('re_bypasslevel', $optionarray_def['re_bypasslevel']); // <select> of capabilities ?>
 			</div>
 
@@ -624,14 +589,21 @@ function recaptcha_dropdown_capabilities($select_name, $checked_value="") {
 			<label for="re_tabindex">Tab Index (<em>e.g. WP: <strong>5</strong>, WPMU: <strong>3</strong></em>):</label>
 			<input name="re_tabindex" id="re_tabindex" size="5" value="<?php  echo $optionarray_def['re_tabindex']; ?>" />
 			<br />
-			<?php global $wpmu; if ($wpmu == 1 || $wpmu == 0) { ?>
 		</td>
 	</tr>
+
 	<tr valign="top">
 		<th scope="row">Registration Options</th>
 		<td>
+			<?php 
+	
+			// If the site is a network activated multi-site install, or a single install, display registration options
+			global $wpmu; if ($wpmu == 1 || $wpmu == 0) { 
+			
+			?>
+			
 			<!-- Show reCAPTCHA on the registration page -->
-			<big><input type="checkbox" name="re_registration" id="re_registration" value="1" <?php if($optionarray_def['re_registration'] == true){echo 'checked="checked"';} ?> /> <label for="re_registration">Enable reCAPTCHA on registration form.</label></big>
+			<input type="checkbox" name="re_registration" id="re_registration" value="1" <?php if($optionarray_def['re_registration'] == true){echo 'checked="checked"';} ?> /> <label for="re_registration">Enable reCAPTCHA on registration form.</label>
 			<br />
 			<!-- The theme selection -->
 			<div class="theme-select">
@@ -643,9 +615,17 @@ function recaptcha_dropdown_capabilities($select_name, $checked_value="") {
 				<option value="clean" <?php if($optionarray_def['re_theme_reg'] == 'clean'){echo 'selected="selected"';} ?>>Clean</option>
 				</select>
 			</div>
+			
+			<?php } else { ?>
+			
+			<p>This plugin must be network activated to use reCAPTCHA on the registration page.</p>
+			
 			<?php } ?>
 		</td>
 	</tr>
+	
+	
+
    <tr valign="top">
       <th scope="row">Error Messages</th>
          <td>
@@ -688,11 +668,10 @@ function recaptcha_dropdown_capabilities($select_name, $checked_value="") {
 		</tr>
 	</table>
 	<div class="submit">
-		<input type="submit" name="submit" value="<?php _e('Update Options') ?> &raquo;" />
+		<input type="submit" name="submit" value="<?php _e('Update Options') ?>" />
 	</div>
 
 	</form>
-   <p class="copyright">&copy; Copyright 2008&nbsp;&nbsp;<a href="http://recaptcha.net">reCAPTCHA</a></p>
 </div> <!-- [wrap] -->
 <!-- ############################## END: ADMIN OPTIONS ##################### -->
 
@@ -710,17 +689,11 @@ if ( !($recaptcha_opt ['pubkey'] && $recaptcha_opt['privkey'] ) && !isset($_POST
    function recaptcha_warning() {
 		global $wpmu;
 		
-		$path = plugin_basename(__FILE__);
-		$top = 0;
-		if ($wp_version <= 2.5)
-		$top = 12.7;
-		else
-		$top = 7;
 		echo "
-		<div id='recaptcha-warning' class='updated fade-ff0000'><p><strong>reCAPTCHA is not active</strong> You must <a href='options-general.php?page=" . $path . "'>enter your reCAPTCHA API key</a> for it to work</p></div>
+		<div id='recaptcha-warning' class='updated fade-ff0000'><p><strong>reCAPTCHA is not active</strong> You must <a href='options-general.php?page=" . plugin_basename(__FILE__) . "'>enter your reCAPTCHA API key</a> for it to work</p></div>
 		<style type='text/css'>
 		#adminmenu { margin-bottom: 5em; }
-		#recaptcha-warning { position: absolute; top: {$top}em; }
+		#recaptcha-warning { position: absolute; top: 7em; }
 		</style>
 		";
    }
@@ -731,8 +704,4 @@ if ( !($recaptcha_opt ['pubkey'] && $recaptcha_opt['privkey'] ) && !isset($_POST
    return;
 }
 
-
-/* =============================================================================
-   End Apply the admin menu
-============================================================================= */
 ?>
