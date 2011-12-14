@@ -15,10 +15,12 @@ if (!class_exists('reCAPTCHA')) {
         
         // php 5 constructor
         function __construct($options_name) {
+        
+        	if ( ! function_exists( 'is_plugin_active_for_network' ) )
+			   require_once( ABSPATH . '/wp-admin/includes/plugin.php' );
+
             parent::__construct($options_name);
-            
-            $this->register_default_options();
-            
+                        
             // require the recaptcha library
             $this->require_library();
             
@@ -32,14 +34,13 @@ if (!class_exists('reCAPTCHA')) {
             add_action('init', array(&$this, 'load_textdomain'));
 
             // styling
-            add_action('wp_head', array(&$this, 'register_stylesheets')); // make unnecessary: instead, inform of classes for styling
-            add_action('admin_head', array(&$this, 'register_stylesheets')); // make unnecessary: shouldn't require styling in the options page
-            
+            add_action('wp_head', array(&$this, 'register_stylesheets'));
+                        
             if ($this->options['show_in_registration'])
-                add_action('login_head', array(&$this, 'registration_style')); // make unnecessary: instead use jQuery and add to the footer?
-
-            // options
-            register_activation_hook(WPPlugin::path_to_plugin_directory() . '/wp-recaptcha.php', array(&$this, 'register_default_options')); // this way it only happens once, when the plugin is activated
+                add_action('login_head', array(&$this, 'registration_style'));
+                
+            // options            
+            add_action('admin_init', array(&$this, 'register_default_options'));
             add_action('admin_init', array(&$this, 'register_settings_group'));
 
             // only register the hooks if the user wants recaptcha on the registration page
@@ -66,6 +67,7 @@ if (!class_exists('reCAPTCHA')) {
             add_filter("plugin_action_links", array(&$this, 'show_settings_link'), 10, 2);
 
             add_action('admin_menu', array(&$this, 'add_settings_page'));
+            //add_action('network_admin_menu', array(&$this, 'add_settings_page'));
             
             // admin notices
             add_action('admin_notices', array(&$this, 'missing_keys_notice'));
@@ -161,14 +163,17 @@ if (!class_exists('reCAPTCHA')) {
         
         // register the settings
         function register_settings_group() {
-            register_setting("recaptcha_options_group", 'recaptcha_options', array(&$this, 'validate_options'));
+            register_setting("recaptcha_options_group", $this->options_name, array(&$this, 'validate_options'));
         }
         
         // todo: make unnecessary
         function register_stylesheets() {
-            $path = WPPlugin::url_to_plugin_directory() . '/recaptcha.css';
-                
-            echo '<link rel="stylesheet" type="text/css" href="' . $path . '" />';
+            echo "<style>
+             .recaptcha-error {
+  			 	font-size: 1.8em;
+  			 	padding-bottom: 8px;
+			}
+            </style>"; 
         }
         
         // stylesheet information
@@ -183,13 +188,11 @@ if (!class_exists('reCAPTCHA')) {
                 $width = 360;
 
             echo <<<REGISTRATION
-                <script type="text/javascript">
-                window.onload = function() {
-                    document.getElementById('login').style.width = '{$width}px';
-                    document.getElementById('reg_passmail').style.marginTop = '10px';
-                    document.getElementById('recaptcha_widget_div').style.marginBottom = '10px';
-                };
-                </script>
+                <style>
+                #login { width: {$width}px; }
+                #reg_passmail{ margin-top: 10px; }
+                #recaptcha_widget_div{ margin-bottom:10px; }
+                </style>
 REGISTRATION;
         }
         
@@ -444,7 +447,8 @@ JS;
                     else {
                         $this->saved_error = $recaptcha_response->error;
                         
-                        // http://codex.wordpress.org/Plugin_API/Filter_Reference#Database_Writes_2
+                        // mark comment as spam 
+                        // (see http://codex.wordpress.org/Plugin_API/Filter_Reference/pre_comment_approved)
                         add_filter('pre_comment_approved', create_function('$a', 'return \'spam\';'));
                         return $comment_data;
                     }
@@ -519,21 +523,24 @@ JS;
         
         // add the settings page
         function add_settings_page() {
-            // add the options page
-/* huyz 2011-06-15 Doesn't work yet
-            if ($this->environment == Environment::WordPressMU && $this->is_authority())
-                add_submenu_page('wpmu-admin.php', 'WP-reCAPTCHA', 'WP-reCAPTCHA', 'manage_options', __FILE__, array(&$this, 'show_settings_page'));
-
-            if ($this->environment == Environment::WordPressMS && $this->is_authority())
-                add_submenu_page('ms-admin.php', 'WP-reCAPTCHA', 'WP-reCAPTCHA', 'manage_options', __FILE__, array(&$this, 'show_settings_page'));
-*/
+        
+			if( ! $this->is_authority() )
+				return;
+			
+			if ( $this->environment == Environment::WordPressMS )  {
+	        	
+        		add_submenu_page('settings.php', 'WP-reCAPTCHA', 'WP-reCAPTCHA', 'manage_options', __FILE__, array(&$this, 'show_settings_page'));
+			
+			} else {
             
-            add_options_page('WP-reCAPTCHA', 'WP-reCAPTCHA', 'manage_options', __FILE__, array(&$this, 'show_settings_page'));
+            	add_options_page('WP-reCAPTCHA', 'WP-reCAPTCHA', 'manage_options', __FILE__, array(&$this, 'show_settings_page'));
+           
+            }
         }
         
-        // store the xhtml in a separate file and use include on it
+        // store the html in a separate file and use include on it
         function show_settings_page() {
-            include("settings.php");
+            require_once( dirname(__FILE__) . '/settings.php');
         }
         
         function build_dropdown($name, $keyvalue, $checked_value) {

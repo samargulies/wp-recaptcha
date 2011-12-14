@@ -5,17 +5,16 @@
 
 ?>
 
-<div class="wrap">
-   <a name="recaptcha"></a>
+<div id="recaptcha" class="wrap">
+	<div id="icon-options-general" class="icon32"><br></div>
    <h2><?php _e('reCAPTCHA Options', 'recaptcha'); ?></h2>
    <p><?php _e('reCAPTCHA is a free, accessible CAPTCHA service that helps to digitize books while blocking spam on your blog.', 'recaptcha'); ?></p>
    
    <form method="post" action="options.php">
       <?php settings_fields('recaptcha_options_group'); ?>
 
-      <h3><?php _e('Authentication', 'recaptcha'); ?></h3>
-      <p><?php _e('These keys are required before you are able to do anything else.', 'recaptcha'); ?> <?php _e('You can get the keys', 'recaptcha'); ?> <a href="<?php echo recaptcha_get_signup_url($this->blog_domain(), 'wordpress');?>" title="<?php _e('Get your reCAPTCHA API Keys', 'recaptcha'); ?>"><?php _e('here', 'recaptcha'); ?></a>.</p>
-      <p><?php _e('Be sure not to mix them up! The public and private keys are not interchangeable!'); ?></p>
+      <h3 class="title"><?php _e('Authentication', 'recaptcha'); ?></h3>
+      <p><?php _e('These keys are required before you are able to do anything else.', 'recaptcha'); ?> <?php _e('You can get the keys', 'recaptcha'); ?> <a href="<?php echo recaptcha_get_signup_url($this->blog_domain(), 'wordpress');?>" title="<?php _e('Get your reCAPTCHA API Keys', 'recaptcha'); ?>"><?php _e('here', 'recaptcha'); ?></a><?php _e('. Be sure not to mix them up! The public and private keys are not interchangeable!'); ?></p>
       
       <table class="form-table">
          <tr valign="top">
@@ -32,7 +31,7 @@
          </tr>
       </table>
       
-      <h3><?php _e('Comment Options', 'recaptcha'); ?></h3>
+      <h3 class="title"><?php _e('Comment Options', 'recaptcha'); ?></h3>
       <table class="form-table">
          <tr valign="top">
             <th scope="row"><?php _e('Activation', 'recaptcha'); ?></th>
@@ -67,11 +66,15 @@
          </tr>
       </table>
       
-      <h3><?php _e('Registration Options', 'recaptcha'); ?></h3>
+      <h3 class="title"><?php _e('Registration Options', 'recaptcha'); ?></h3>
       <table class="form-table">
          <tr valign="top">
+         	<?php 
+            	if( ! is_plugin_active_for_network('wp-recaptcha/wp-recaptcha.php') ) {
+            ?>
             <th scope="row"><?php _e('Activation', 'recaptcha'); ?></th>
             <td>
+
                <input type="checkbox" id ="recaptcha_options[show_in_registration]" name="recaptcha_options[show_in_registration]" value="1" <?php checked('1', $this->options['show_in_registration']); ?> />
                <label for="recaptcha_options[show_in_registration]"><?php _e('Enable for registration form', 'recaptcha'); ?></label>
             </td>
@@ -90,10 +93,18 @@
             <td>
                <input type="text" name="recaptcha_options[registration_tab_index]" size="10" value="<?php echo $this->options['registration_tab_index']; ?>" />
             </td>
+            <?php 
+            } else {
+            //todo: allow recaptcha for registration option in multisite if enabled network-wide
+            ?>
+            <p><?php _e('Registration are not available for WordPress Multisite yet.', 'recaptcha'); ?></p>
+            <?php
+            } 
+            ?>
          </tr>
       </table>
       
-      <h3><?php _e('General Options', 'recaptcha'); ?></h3>
+      <h3 class="title"><?php _e('General Options', 'recaptcha'); ?></h3>
       <table class="form-table">
          <tr valign="top">
             <th scope="row"><?php _e('reCAPTCHA Form', 'recaptcha'); ?></th>
@@ -112,7 +123,7 @@
          </tr>
       </table>
       
-      <h3><?php _e('Error Messages', 'recaptcha'); ?></h3>
+      <h3 class="title"><?php _e('Error Messages', 'recaptcha'); ?></h3>
       <table class="form-table">
          <tr valign="top">
             <th scope="row"><?php _e('reCAPTCHA Ignored', 'recaptcha'); ?></th>
@@ -129,7 +140,7 @@
          </tr>
       </table>
 
-      <p class="submit"><input type="submit" class="button-primary" title="<?php _e('Save reCAPTCHA Options') ?>" value="<?php _e('Save reCAPTCHA Changes') ?> &raquo;" /></p>
+      <p class="submit"><input type="submit" class="button-primary" title="<?php _e('Save reCAPTCHA Options') ?>" value="<?php _e('Save reCAPTCHA Options') ?>" /></p>
    </form>
    
    <?php do_settings_sections('recaptcha_options_page'); ?>
