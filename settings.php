@@ -57,13 +57,6 @@
                <?php $this->theme_dropdown('comments'); ?>
             </td>
          </tr>
-
-         <tr valign="top">
-            <th scope="row"><?php _e('Tab Index', 'recaptcha'); ?></th>
-            <td>
-               <input type="text" name="recaptcha_options[comments_tab_index]" size="10" value="<?php echo $this->options['comments_tab_index']; ?>" />
-            </td>
-         </tr>
       </table>
       
       <h3 class="title"><?php _e('Registration Options', 'recaptcha'); ?></h3>

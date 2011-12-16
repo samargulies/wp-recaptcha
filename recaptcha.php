@@ -118,7 +118,6 @@ if (!class_exists('reCAPTCHA')) {
                $option_defaults['registration_theme'] = $old_options['re_theme_reg']; // the default theme for reCAPTCHA on the registration form
                $option_defaults['recaptcha_language'] = $old_options['re_lang']; // the default language for reCAPTCHA
                $option_defaults['xhtml_compliance'] = $old_options['re_xhtml']; // whether or not to be XHTML 1.0 Strict compliant
-               $option_defaults['comments_tab_index'] = $old_options['re_tabindex']; // the default tabindex for reCAPTCHA
                $option_defaults['registration_tab_index'] = 30; // the default tabindex for reCAPTCHA
 
                // error handling
@@ -144,7 +143,6 @@ if (!class_exists('reCAPTCHA')) {
                $option_defaults['registration_theme'] = 'red'; // the default theme for reCAPTCHA on the registration form
                $option_defaults['recaptcha_language'] = 'en'; // the default language for reCAPTCHA
                $option_defaults['xhtml_compliance'] = 0; // whether or not to be XHTML 1.0 Strict compliant
-               $option_defaults['comments_tab_index'] = 5; // the default tabindex for reCAPTCHA
                $option_defaults['registration_tab_index'] = 30; // the default tabindex for reCAPTCHA
 
                // error handling
@@ -244,7 +242,6 @@ REGISTRATION;
             $validated['minimum_bypass_level'] = $this->validate_dropdown($capabilities, 'minimum_bypass_level', $input['minimum_bypass_level']);
             $validated['comments_theme'] = $this->validate_dropdown($themes, 'comments_theme', $input['comments_theme']);
             
-            $validated['comments_tab_index'] = $input['comments_tab_index'] ? $input["comments_tab_index"] : 5; // use the intval filter
             
             $validated['show_in_registration'] = ($input['show_in_registration'] == 1 ? 1 : 0);
             $validated['registration_theme'] = $this->validate_dropdown($themes, 'registration_theme', $input['registration_theme']);
@@ -374,31 +371,15 @@ COMMENT_FORM;
                 //modify the comment form for the reCAPTCHA widget
                 $recaptcha_js_opts = <<<OPTS
                 <script type='text/javascript'>
-                    var RecaptchaOptions = { theme : '{$this->options['comments_theme']}', lang : '{$this->options['recaptcha_language']}' , tabindex : {$this->options['comments_tab_index']} };
+                    var RecaptchaOptions = { 
+                    	theme : '{$this->options['comments_theme']}', 
+                    	lang : '{$this->options['recaptcha_language']}'
+                    };
                 </script>
 OPTS;
-
-                // todo: replace this with jquery: http://digwp.com/2009/06/including-jquery-in-wordpress-the-right-way/
-                // todo: use math to increment+1 the submit button based on what the tab_index option is
-                if ($this->options['xhtml_compliance']) {
-                    $comment_string = <<<COMMENT_FORM
-                        <div id="recaptcha-submit-btn-area">&nbsp;</div>
-COMMENT_FORM;
-                }
-
-                else {
-                    $comment_string = <<<COMMENT_FORM
-                        <div id="recaptcha-submit-btn-area">&nbsp;</div>
-                        <noscript>
-                         <style type='text/css'>#submit {display:none;}</style>
-                         <input name="submit" type="submit" id="submit-alt" tabindex="6" value="Submit Comment"/> 
-                        </noscript>
-COMMENT_FORM;
-                }
-
-                $use_ssl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] == "on");
-
-                echo $recaptcha_js_opts . $this->get_recaptcha_html(isset($_GET['rerror']) ? $_GET['rerror'] : null, $use_ssl) . $comment_string;
+				echo $comment_field;
+				echo $recaptcha_js_opts;
+                echo $this->get_recaptcha_html($rerror, is_ssl() );
            }
         }
         
