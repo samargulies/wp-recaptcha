@@ -171,8 +171,7 @@ if (!class_exists('reCAPTCHA')) {
         
             echo "<style type='text/css'>
              .recaptcha-error {
-  			 	font-size: 1.8em;
-  			 	padding-bottom: 8px;
+  			 	color: red;
 			}
 			#recaptcha_area #recaptcha_response_field {
 				width: auto;
@@ -384,10 +383,7 @@ FORMAT;
                 return;
 
             else {
-                // Did the user fail to match the CAPTCHA? If so, let them know
-                if($rerror == 'incorrect-captcha-sol')
-                    echo '<p class="recaptcha-error">' . $this->options['incorrect_response_error'] . "</p>";
-
+ 
                 //modify the comment form for the reCAPTCHA widget
                 $recaptcha_js_opts = <<<OPTS
                 <script type='text/javascript'>
@@ -398,6 +394,10 @@ FORMAT;
                 </script>
 OPTS;
 				echo $comment_field;
+				              // Did the user fail to match the CAPTCHA? If so, let them know
+                if($rerror == 'incorrect-captcha-sol')
+                    echo '<p class="recaptcha-error">' . $this->options['incorrect_response_error'] . "</p>";
+
 				echo $recaptcha_js_opts;
                 echo $this->get_recaptcha_html($rerror, is_ssl() );
            }
