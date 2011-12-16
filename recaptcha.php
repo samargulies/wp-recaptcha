@@ -54,11 +54,9 @@ if (!class_exists('reCAPTCHA')) {
 
             // only register the hooks if the user wants recaptcha on the comments page
             if ($this->options['show_in_comments']) {
-                add_action('comment_form', array(&$this, 'show_recaptcha_in_comments'));
-                add_action('wp_footer', array(&$this, 'save_comment_script')); // preserve the comment that was entered
+                add_filter('comment_form_field_comment', array(&$this, 'show_recaptcha_in_comments'));
 
                 // recaptcha comment processing (look into doing all of this with AJAX, optionally)
-                add_action('wp_head', array(&$this, 'saved_comment'), 0);
                 add_action('preprocess_comment', array(&$this, 'check_comment'), 0);
                 add_action('comment_post_redirect', array(&$this, 'relative_redirect'), 0, 2);
             }
@@ -166,11 +164,40 @@ if (!class_exists('reCAPTCHA')) {
         
         // todo: make unnecessary
         function register_stylesheets() {
-            echo "<style>
+        
+        	if( ! comments_open() ) {
+        		return;
+        	}
+        
+            echo "<style type='text/css'>
              .recaptcha-error {
   			 	font-size: 1.8em;
   			 	padding-bottom: 8px;
 			}
+			#recaptcha_area #recaptcha_response_field {
+				width: auto;
+				height: auto;
+				border: 1px solid gray;
+				padding: 0;
+				text-indent: 0;
+				box-shadow: none;
+				-webkit-border-radius: 0;
+				-moz-border-radius: 0;
+				border-radius: 0;
+				-webkit-box-shadow: none;
+				-moz-box-shadow: none;
+				box-shadow: none;
+				line-height: inherit;
+			}
+			#recaptcha_area .recaptcha_theme_red #recaptcha_response_field {
+				border: 1px solid #CCA940;
+			}
+			#recaptcha_area label {
+				line-height: inherit;
+			}
+			#recaptcha_table{
+				direction: ltr;
+            }
             </style>"; 
         }
         
@@ -186,7 +213,7 @@ if (!class_exists('reCAPTCHA')) {
                 $width = 360;
 
             echo <<<REGISTRATION
-                <style>
+                <style type='text/css'>
                 #login { width: {$width}px; }
                 #reg_passmail{ margin-top: 10px; }
                 #recaptcha_widget_div{ margin-bottom:10px; }
@@ -258,35 +285,26 @@ REGISTRATION;
         
         // display recaptcha
         function show_recaptcha_in_registration($errors) {
+        
+        	$rerror = esc_html( $_GET['rerror'] );
+        
             $format = <<<FORMAT
             <script type='text/javascript'>
             var RecaptchaOptions = { theme : '{$this->options['registration_theme']}', lang : '{$this->options['recaptcha_language']}' , tabindex : {$this->options['registration_tab_index']} };
             </script>
 FORMAT;
 
-            $comment_string = <<<COMMENT_FORM
-            <script type='text/javascript'>   
-            document.getElementById('recaptcha_table').style.direction = 'ltr';
-            </script>
-COMMENT_FORM;
-
-            // todo: is this check necessary? look at the latest recaptchalib.php
-            if (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] == "on")
-                $use_ssl = true;
-            else
-                $use_ssl = false;
-
             // if it's for wordpress mu, show the errors
             if ($this->is_multi_blog()) {
                 $error = $errors->get_error_message('captcha');
                 echo '<label for="verification">Verification:</label>';
                 echo ($error ? '<p class="error">'.$error.'</p>' : '');
-                echo $format . $this->get_recaptcha_html($_GET['rerror'], $use_ssl);
+                echo $format . $this->get_recaptcha_html($rerror, is_ssl());
             }
             
             // for regular wordpress
             else {
-                echo $format . $this->get_recaptcha_html($_GET['rerror'], $use_ssl);
+                echo $format . $this->get_recaptcha_html($rerror, is_ssl());
             }
         }
         
@@ -352,9 +370,11 @@ COMMENT_FORM;
             return recaptcha_get_html($this->options['public_key'], $recaptcha_error, $use_ssl, $this->options['xhtml_compliance']);
         }
         
-        function show_recaptcha_in_comments() {
+        function show_recaptcha_in_comments( $comment_field ) {
             global $user_ID;
-
+            
+			$rerror = isset($_GET['rerror']) ? esc_html( $_GET['rerror'] ) : null;
+			
             // set the minimum capability needed to skip the captcha if there is one
             if (isset($this->options['bypass_for_registered_users']) && $this->options['bypass_for_registered_users'] && $this->options['minimum_bypass_level'])
                 $needed_capability = $this->options['minimum_bypass_level'];
@@ -365,7 +385,7 @@ COMMENT_FORM;
 
             else {
                 // Did the user fail to match the CAPTCHA? If so, let them know
-                if ((isset($_GET['rerror']) && $_GET['rerror'] == 'incorrect-captcha-sol'))
+                if($rerror == 'incorrect-captcha-sol')
                     echo '<p class="recaptcha-error">' . $this->options['incorrect_response_error'] . "</p>";
 
                 //modify the comment form for the reCAPTCHA widget
@@ -381,22 +401,6 @@ OPTS;
 				echo $recaptcha_js_opts;
                 echo $this->get_recaptcha_html($rerror, is_ssl() );
            }
-        }
-        
-        // this is what does the submit-button re-ordering
-        function save_comment_script() {
-            $javascript = <<<JS
-                <script type="text/javascript">
-                var sub = document.getElementById('submit');
-                document.getElementById('recaptcha-submit-btn-area').appendChild (sub);
-                document.getElementById('submit').tabIndex = 6;
-                if ( typeof _recaptcha_wordpress_savedcomment != 'undefined') {
-                        document.getElementById('comment').value = _recaptcha_wordpress_savedcomment;
-                }
-                document.getElementById('recaptcha_table').style.direction = 'ltr';
-                </script>
-JS;
-            echo $javascript;
         }
         
         // todo: this doesn't seem necessary
@@ -453,35 +457,7 @@ JS;
             
             return $location;
         }
-        
-        function saved_comment() {
-            if (!is_single() && !is_page())
-                return;
-            
-            $comment_id = $_REQUEST['rcommentid'];
-            $comment_hash = $_REQUEST['rchash'];
-            
-            if (empty($comment_id) || empty($comment_hash))
-               return;
-            
-            if ($comment_hash == $this->hash_comment($comment_id)) {
-               $comment = get_comment($comment_id);
 
-               // todo: removed double quote from list of 'dangerous characters'
-               $com = preg_replace('/([\\/\(\)\+\;\'])/e','\'%\'.dechex(ord(\'$1\'))', $comment->comment_content);
-                
-               $com = preg_replace('/\\r\\n/m', '\\\n', $com);
-                
-               echo "
-                <script type='text/javascript'>
-                var _recaptcha_wordpress_savedcomment =  '" . $com  ."';
-                _recaptcha_wordpress_savedcomment = unescape(_recaptcha_wordpress_savedcomment);
-                </script>
-                ";
-
-                wp_delete_comment($comment->comment_ID);
-            }
-        }
         
         // todo: is this still needed?
         // this is used for the api keys url in the administration interface
