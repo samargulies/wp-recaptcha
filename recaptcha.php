@@ -55,9 +55,10 @@ if (!class_exists('reCAPTCHA')) {
             // only register the hooks if the user wants recaptcha on the comments page
             if ($this->options['show_in_comments']) {
                 add_filter('comment_form_field_comment', array(&$this, 'show_recaptcha_in_comments'));
-
-                // recaptcha comment processing (look into doing all of this with AJAX, optionally)
+                
                 add_action('preprocess_comment', array(&$this, 'check_comment'), 0);
+
+                // note any errors and save comment text in url if there was failed captcha response
                 add_action('comment_post_redirect', array(&$this, 'relative_redirect'), 0, 2);
             }
 
@@ -289,7 +290,10 @@ REGISTRATION;
         
             $format = <<<FORMAT
             <script type='text/javascript'>
-            var RecaptchaOptions = { theme : '{$this->options['registration_theme']}', lang : '{$this->options['recaptcha_language']}' , tabindex : {$this->options['registration_tab_index']} };
+            var RecaptchaOptions = { 
+            	theme : '{$this->options['registration_theme']}', 
+            	lang : '{$this->options['recaptcha_language']} 
+            };
             </script>
 FORMAT;
 
@@ -356,14 +360,9 @@ FORMAT;
         }
         
         // utility methods
-        function hash_comment($id) {
-            define ("RECAPTCHA_WP_HASH_SALT", "b7e0638d85f5d7f3694f68e944136d62");
-            
-            if (function_exists('wp_hash'))
-                return wp_hash(RECAPTCHA_WP_HASH_SALT . $id);
-            else
-                return md5(RECAPTCHA_WP_HASH_SALT . $this->options['private_key'] . $id);
-        }
+        function hash_comment($id) {  
+            return wp_hash($this->options['private_key'] . $id);
+          }
         
         function get_recaptcha_html($recaptcha_error, $use_ssl=false) {
             return recaptcha_get_html($this->options['public_key'], $recaptcha_error, $use_ssl, $this->options['xhtml_compliance']);
@@ -394,7 +393,12 @@ FORMAT;
                 </script>
 OPTS;
 				echo $comment_field;
-				              // Did the user fail to match the CAPTCHA? If so, let them know
+	
+				// see if there is an unsaved comment to retreive after a failed
+				// captcha response
+				$this::revive_comment_text();
+				
+				// Did the user fail to match the CAPTCHA? If so, let them know
                 if($rerror == 'incorrect-captcha-sol')
                     echo '<p class="recaptcha-error">' . $this->options['incorrect_response_error'] . "</p>";
 
@@ -403,40 +407,32 @@ OPTS;
            }
         }
         
-        // todo: this doesn't seem necessary
-        function show_captcha_for_comment() {
-            global $user_ID;
-            return true;
-        }
-        
         function check_comment($comment_data) {
             global $user_ID;
             
             if ($this->options['bypass_for_registered_users'] && $this->options['minimum_bypass_level'])
                 $needed_capability = $this->options['minimum_bypass_level'];
             
-            if (($needed_capability && current_user_can($needed_capability)) || !$this->options['show_in_comments'])
+            if ((isset($needed_capability) && current_user_can($needed_capability)) || !$this->options['show_in_comments'])
                 return $comment_data;
             
-            if ($this->show_captcha_for_comment()) {
-                // do not check trackbacks/pingbacks
-                if ($comment_data['comment_type'] == '') {
-                    $challenge = $_POST['recaptcha_challenge_field'];
-                    $response = $_POST['recaptcha_response_field'];
+            // do not check trackbacks/pingbacks
+            if ($comment_data['comment_type'] == '') {
+                $challenge = $_POST['recaptcha_challenge_field'];
+                $response = $_POST['recaptcha_response_field'];
+                
+                $recaptcha_response = recaptcha_check_answer($this->options['private_key'], $_SERVER['REMOTE_ADDR'], $challenge, $response);
+                
+                if ($recaptcha_response->is_valid)
+                    return $comment_data;
                     
-                    $recaptcha_response = recaptcha_check_answer($this->options['private_key'], $_SERVER['REMOTE_ADDR'], $challenge, $response);
+                else {
+                    $this->saved_error = $recaptcha_response->error;
                     
-                    if ($recaptcha_response->is_valid)
-                        return $comment_data;
-                        
-                    else {
-                        $this->saved_error = $recaptcha_response->error;
-                        
-                        // mark comment as spam 
-                        // (see http://codex.wordpress.org/Plugin_API/Filter_Reference/pre_comment_approved)
-                        add_filter('pre_comment_approved', create_function('$a', 'return \'spam\';'));
-                        return $comment_data;
-                    }
+                    // mark comment as spam 
+                    // (see http://codex.wordpress.org/Plugin_API/Filter_Reference/pre_comment_approved)
+                    add_filter('pre_comment_approved', create_function('$a', 'return \'spam\';'));
+                    return $comment_data;
                 }
             }
             
@@ -446,19 +442,47 @@ OPTS;
         function relative_redirect($location, $comment) {
             if ($this->saved_error != '') {
                 // replace #comment- at the end of $location with #commentform
+                $location = substr($location, 0, strpos($location, '#')) . '#commentform';
                 
-                $location = substr($location, 0, strpos($location, '#')) .
-                    ((strpos($location, "?") === false) ? "?" : "&") .
-                    'rcommentid=' . $comment->comment_ID .
-                    '&rerror=' . $this->saved_error .
-                    '&rchash=' . $this->hash_comment($comment->comment_ID) .
-                    '#commentform';
+                $location = add_query_arg( array(
+                	'rcommentid' => $comment->comment_ID,
+                    'rerror'	 => $this->saved_error,
+                    'rchash'   	 => $this->hash_comment($comment->comment_ID),
+                    'rnonce'  	 => wp_create_nonce('recaptcha')
+                ), $location );
             }
             
             return $location;
         }
-
         
+	    function revive_comment_text() {	            
+			$comment_id = (int) $_REQUEST['rcommentid'];
+			$comment_hash = esc_attr( $_REQUEST['rchash'] );
+			$comment_hash = esc_attr( $_REQUEST['rchash'] );
+			$comment_nonce = esc_attr( $_REQUEST['rnonce'] );
+			
+			if( ! wp_verify_nonce( $comment_nonce, 'recaptcha' ) )
+				return;
+			
+			if ($comment_hash != $this->hash_comment($comment_id))
+				return;
+			$comment = get_comment($comment_id);
+			
+			if( $comment->comment_approved === 1 )
+				return;
+				
+			$comment_content = preg_replace('/([\\/\(\)\+\;\'])/e','\'%\'.dechex(ord(\'$1\'))', $comment->comment_content);
+            $comment_content = preg_replace('/\\r\\n/m', '\\\n', $comment_content);
+				                                
+			echo "
+			<script type='text/javascript'>
+				document.getElementById('comment').value = unescape('$comment_content');
+			</script>
+			";
+			
+			wp_delete_comment($comment->comment_ID);
+		}
+	    
         // todo: is this still needed?
         // this is used for the api keys url in the administration interface
         function blog_domain() {
